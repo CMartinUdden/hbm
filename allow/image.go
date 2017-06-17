@@ -14,11 +14,6 @@ import (
 	"github.com/kassisol/hbm/version"
 )
 
-var (
-	// AllImages allow all images to be pulled
-	AllImages bool
-)
-
 // ImageCreate called from plugin
 func ImageCreate(req authorization.Request, config *types.Config) *types.AllowResult {
 	u, err := url.ParseRequestURI(req.RequestURI)
