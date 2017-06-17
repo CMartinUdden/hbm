@@ -80,8 +80,8 @@ func (c *Config) CountPolicy() int {
 }
 
 // ValidatePolicy function
-func (c *Config) ValidatePolicy(user, res_type, res_value, option string) bool {
-	rows, _ := c.DB.Raw("SELECT COUNT(*) FROM users, resources, groups, collections, group_users, collection_resources, policies WHERE policies.group_id = groups.id AND policies.collection_id = collections.id AND group_users.group_id = groups.id AND group_users.user_id = users.id AND collection_resources.collection_id = collections.id AND collection_resources.resource_id = resources.id AND users.name = ? AND resources.type = ? AND resources.value = ? AND resources.option = ?", user, res_type, res_value, option).Rows()
+func (c *Config) ValidatePolicy(user, restype, resvalue, option string) bool {
+	rows, _ := c.DB.Raw("SELECT COUNT(*) FROM users, resources, groups, collections, group_users, collection_resources, policies WHERE policies.group_id = groups.id AND policies.collection_id = collections.id AND group_users.group_id = groups.id AND group_users.user_id = users.id AND collection_resources.collection_id = collections.id AND collection_resources.resource_id = resources.id AND users.name = ? AND resources.type = ? AND resources.value = ? AND resources.option = ?", user, restype, resvalue, option).Rows()
 	defer rows.Close()
 
 	for rows.Next() {
