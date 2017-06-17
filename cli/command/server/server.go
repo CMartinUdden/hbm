@@ -34,6 +34,8 @@ func NewServerCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.BoolVarP(&allow.AllImages, "allowallimages", "i", false, "Allow all images")
 	flags.BoolVarP(&allow.AllActions, "allowallactions", "a", false, "Allow all actions")
+	flags.BoolVarP(&allow.AllHostPorts, "allowallhostports", "p", false, "Allow all host port publications")
+	flags.BoolVarP(&allow.HiHostPorts, "allowhihostports", "P", false, "Allow high host port publications (>1024)")
 
 	return cmd
 }

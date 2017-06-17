@@ -3,6 +3,7 @@ package allow
 import (
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/docker/engine-api/types/container"
@@ -17,6 +18,13 @@ import (
 	"github.com/kassisol/hbm/storage"
 	"github.com/kassisol/hbm/storage/driver"
 	"github.com/kassisol/hbm/version"
+)
+
+var (
+	// AllHostPorts Allow all host port publications
+	AllHostPorts bool
+	// HiHostPorts Allow high host port publications (>1024)
+	HiHostPorts bool
 )
 
 // ContainerCreate called from plugin
@@ -116,9 +124,30 @@ func ContainerCreate(req authorization.Request, config *types.Config) *types.All
 		for _, pbs := range cc.HostConfig.PortBindings {
 			for _, pb := range pbs {
 				spb := getPortBindingString(&pb)
+				spbi, err := strconv.Atoi(spb)
+
+				if err != nil {
+					l.WithFields(logdriver.Fields{
+						"storagedriver": "sqlite",
+						"logdriver":     "standard",
+						"version":       version.Version,
+					}).Fatal(err)
+				}
 
 				if !s.ValidatePolicy(config.Username, "port", spb, "") {
-					return &types.AllowResult{Allow: false, Msg: fmt.Sprintf("Port %s is not allowed to be pubished", spb)}
+					if AllHostPorts {
+						l.Info("Passing on AllHostPorts server policy")
+					} else {
+						if HiHostPorts {
+							if spbi > 1024 {
+								l.Info("Passing on HiHostPorts policy")
+							} else {
+								return &types.AllowResult{Allow: false, Msg: fmt.Sprintf("Port %s is not allowed to be pubished", spb)}
+							}
+						} else {
+							return &types.AllowResult{Allow: false, Msg: fmt.Sprintf("Port %s is not allowed to be pubished", spb)}
+						}
+					}
 				}
 			}
 		}
