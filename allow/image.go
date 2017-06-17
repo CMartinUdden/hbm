@@ -14,6 +14,11 @@ import (
 	"github.com/kassisol/hbm/version"
 )
 
+var (
+	// AllImages allow all images to be pulled
+	AllImages bool
+)
+
 // ImageCreate called from plugin
 func ImageCreate(req authorization.Request, config *types.Config) *types.AllowResult {
 	u, err := url.ParseRequestURI(req.RequestURI)
@@ -34,6 +39,11 @@ func allowImage(img string, config *types.Config) bool {
 	defer utils.RecoverFunc()
 
 	l, _ := log.NewDriver("standard", nil)
+
+	if AllImages {
+		l.Info("Passing on AllImages server policy")
+		return true
+	}
 
 	s, err := storage.NewDriver("sqlite", config.AppPath)
 	if err != nil {

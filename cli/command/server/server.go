@@ -13,6 +13,7 @@ import (
 	"github.com/juliengk/go-log"
 	"github.com/juliengk/go-log/driver"
 	"github.com/juliengk/go-utils/filedir"
+	"github.com/kassisol/hbm/allow"
 	"github.com/kassisol/hbm/cli/command"
 	"github.com/kassisol/hbm/plugin"
 	"github.com/kassisol/hbm/version"
@@ -29,6 +30,10 @@ func NewServerCommand() *cobra.Command {
 		Long:  serverDescription,
 		Run:   runStart,
 	}
+
+	flags := cmd.Flags()
+	flags.BoolVarP(&allow.AllImages, "allowallimages", "i", false, "Allow all images")
+	flags.BoolVarP(&allow.AllActions, "allowallactions", "a", false, "Allow all actions")
 
 	return cmd
 }

@@ -11,11 +11,19 @@ import (
 	"github.com/kassisol/hbm/version"
 )
 
+// AllActions allow all actions
+var AllActions bool
+
 // Action called from plugin
 func Action(config *types.Config, action, cmd string) *types.AllowResult {
 	defer utils.RecoverFunc()
 
 	l, _ := log.NewDriver("standard", nil)
+
+	if AllActions {
+		l.Info("Passing on AllActions server policy")
+		return &types.AllowResult{Allow: true}
+	}
 
 	s, err := storage.NewDriver("sqlite", config.AppPath)
 	if err != nil {
