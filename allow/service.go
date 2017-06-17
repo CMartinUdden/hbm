@@ -14,7 +14,8 @@ import (
 	"github.com/kassisol/hbm/version"
 )
 
-func AllowServiceCreate(req authorization.Request, config *types.Config) *types.AllowResult {
+// ServiceCreate called from plugin
+func ServiceCreate(req authorization.Request, config *types.Config) *types.AllowResult {
 	svc := &swarm.Service{}
 
 	err := json.Decode(req.RequestBody, svc)
@@ -50,7 +51,7 @@ func AllowServiceCreate(req authorization.Request, config *types.Config) *types.
 		for _, mount := range svc.Spec.TaskTemplate.ContainerSpec.Mounts {
 			if mount.Type == "bind" {
 				if len(mount.Source) > 0 {
-					if !AllowVolume(mount.Source, config) {
+					if !allowVolume(mount.Source, config) {
 						return &types.AllowResult{Allow: false, Msg: fmt.Sprintf("Volume %s is not allowed to be mounted", mount.Source)}
 					}
 				}
