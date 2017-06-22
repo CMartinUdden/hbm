@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"time"
 
@@ -19,8 +18,9 @@ import (
 )
 
 var (
-	serverConfig    string
-	policyDirectory string
+	// DebugACL Turn on debug messages for the ACL subsystem
+	DebugACL     bool
+	serverConfig string
 )
 
 // NewServerCommand new server command
@@ -37,7 +37,6 @@ func NewServerCommand() *cobra.Command {
 
 func serverInitConfig() {
 	dockerPluginPath := "/etc/docker/plugins"
-	policyDirectory := "/etc/hbm/policy.d"
 	dockerPluginFile := filepath.Join(dockerPluginPath, "hbm.spec")
 	pluginSpecContent := []byte("unix://run/docker/plugins/hbm.sock")
 
@@ -60,14 +59,13 @@ func serverInitConfig() {
 		}
 	}
 
-	policy.Init(policyDirectory, true)
-
 	log.Info("Server has completed initialization")
 }
 
 func runStart(cmd *cobra.Command, args []string) {
 
-	var mutex = &sync.Mutex{}
+	policyDirectory := "/etc/hbm/policy.d"
+	DebugACL = true
 
 	serverInitConfig()
 	watcher, err := fsnotify.NewWatcher()
@@ -94,22 +92,22 @@ func runStart(cmd *cobra.Command, args []string) {
 		log.Fatal(h.ServeUnix("root", "hbm"))
 	}()
 
-	go func() {
+	go func(policyDirectory string, debugACL bool) {
+		policy.Init(policyDirectory, debugACL)
 		for {
 			select {
 			case event := <-watcher.Events:
+				log.Debugf("event: Name: %s, Op: %s", event.Name, event.Op)
 				if event.Op&fsnotify.Write == fsnotify.Write && policy.SupportedFile(event.Name) {
 					log.Debugf("Reinit ACL on event: Name: %s, Op: %s", event.Name, event.Op)
 					time.Sleep(1000 * time.Millisecond)
-					mutex.Lock()
-					policy.Init("/etc/hbm/policy.d", true)
-					mutex.Unlock()
+					policy.Init(policyDirectory, debugACL)
 				}
 			case err := <-watcher.Errors:
 				log.Error("error:", err)
 			}
 		}
-	}()
+	}(policyDirectory, DebugACL)
 
 	err = watcher.Add(policyDirectory)
 	if err != nil {
