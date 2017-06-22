@@ -3,7 +3,7 @@ package policy
 import (
 	"encoding/json"
 	log "github.com/Sirupsen/logrus"
-	//"github.com/davecgh/go-spew/spew"
+	"github.com/davecgh/go-spew/spew"
 	"io/ioutil"
 	"os"
 )
@@ -72,14 +72,14 @@ func calculateacl() {
 	// This contains all the policies group indexed
 	for _, g := range theconfig.Groups {
 		thegroups[g.Name] = &aclentry{Name: g.Name, Members: g.Members, Binds: g.Binds,
-			Caps: g.Caps, Devs: g.Devs, Flags: g.Flags}
+			Caps: g.Caps, Devs: g.Devs, Flags: g.Flags, PortBindings: g.PortBindings}
 		allgroups = append(allgroups, g.Name)
 	}
 
-	log.Debugf("allgroups %s", allgroups)
+	log.Debugf("Groups before group construction %s", allgroups)
 
 	for _, user := range theconfig.Users {
-		if user.Groups[0] == "*" {
+		if len(user.Groups) > 0 && user.Groups[0] == "*" {
 			groups = allgroups
 		} else {
 			groups = user.Groups
@@ -88,7 +88,7 @@ func calculateacl() {
 	}
 
 	for _, bind := range theconfig.Binds {
-		if bind.Groups[0].Name == "*" {
+		if len(bind.Groups) > 0 && bind.Groups[0].Name == "*" {
 			for _, b := range allgroups {
 				bg = append(bg, bindgroup{Name: b, ReadOnly: bind.Groups[0].ReadOnly})
 			}
@@ -99,7 +99,7 @@ func calculateacl() {
 	}
 
 	for _, cap := range theconfig.Caps {
-		if cap.Groups[0] == "*" {
+		if len(cap.Groups) > 0 && cap.Groups[0] == "*" {
 			groups = allgroups
 		} else {
 			groups = cap.Groups
@@ -108,7 +108,7 @@ func calculateacl() {
 	}
 
 	for _, dev := range theconfig.Devs {
-		if dev.Groups[0] == "*" {
+		if len(dev.Groups) > 0 && dev.Groups[0] == "*" {
 			groups = allgroups
 		} else {
 			groups = dev.Groups
@@ -117,7 +117,7 @@ func calculateacl() {
 	}
 
 	for _, flag := range theconfig.Flags {
-		if flag.Groups[0] == "*" {
+		if len(flag.Groups) > 0 && flag.Groups[0] == "*" {
 			groups = allgroups
 		} else {
 			groups = flag.Groups
@@ -126,13 +126,19 @@ func calculateacl() {
 	}
 
 	for _, portbinding := range theconfig.PortBindings {
-		if portbinding.Groups[0] == "*" {
+		if len(portbinding.Groups) > 0 && portbinding.Groups[0] == "*" {
 			groups = allgroups
 		} else {
 			groups = portbinding.Groups
 		}
 		addportbinding(portbinding.Name, groups, thegroups)
 	}
+
+	allgroups = []string{}
+	for g := range thegroups {
+		allgroups = append(allgroups, g)
+	}
+	log.Debugf("Groups after group construction %s", allgroups)
 
 	// Now we create the ACL var, indexed by user name for easy lookup
 	// We treat the users as dummy groups
@@ -160,6 +166,8 @@ func calculateacl() {
 			}
 		}
 	}
+	log.Debugf("Calculated group list: %s", spew.Sdump(thegroups))
+	log.Debugf("Calculated ACL: %s", spew.Sdump(acl))
 }
 
 // Make sure we have a named entry in a acl map
@@ -331,11 +339,9 @@ func wf(path string, info os.FileInfo, err error) error {
 		// and merge the configuration into the global conf var
 		configmerge(&c)
 
-		// log.Debugf("Read config: %s", spew.Sdump(theconfig))
+		log.Debugf("Read config: %s", spew.Sdump(theconfig))
 
 	}
 
-	//log.Debugf("Calculated group list: %s", spew.Sdump(thegroups))
-	//log.Debugf("Calculated ACL: %s", spew.Sdump(acl))
 	return nil
 }

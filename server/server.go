@@ -18,8 +18,6 @@ import (
 )
 
 var (
-	// DebugACL Turn on debug messages for the ACL subsystem
-	DebugACL     bool
 	serverConfig string
 )
 
@@ -31,6 +29,10 @@ func NewServerCommand() *cobra.Command {
 		Long:  serverDescription,
 		Run:   runStart,
 	}
+	flags := cmd.Flags()
+	flags.BoolVarP(&policy.DebugACL, "debugacl", "a", false, "Debug the ACL subsystem")
+	flags.BoolVarP(&policy.AllowWildcard, "allowwildcard", "w", false, "Allow the wildcard user \"*\" to be used for unknown users")
+	flags.StringVarP(&policy.Directory, "policydir", "d", "/etc/hbm/policy.d", "ACL policy directory")
 
 	return cmd
 }
@@ -64,9 +66,6 @@ func serverInitConfig() {
 
 func runStart(cmd *cobra.Command, args []string) {
 
-	policyDirectory := "/etc/hbm/policy.d"
-	DebugACL = true
-
 	serverInitConfig()
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -74,7 +73,7 @@ func runStart(cmd *cobra.Command, args []string) {
 	}
 	defer watcher.Close()
 
-	ch := make(chan os.Signal, 1)
+	ch := make(chan os.Signal)
 	signal.Notify(ch, os.Interrupt)
 	signal.Notify(ch, syscall.SIGTERM)
 
@@ -92,26 +91,28 @@ func runStart(cmd *cobra.Command, args []string) {
 		log.Fatal(h.ServeUnix("root", "hbm"))
 	}()
 
-	go func(policyDirectory string, debugACL bool) {
-		policy.Init(policyDirectory, debugACL)
-		for {
-			select {
-			case event := <-watcher.Events:
-				log.Debugf("event: Name: %s, Op: %s", event.Name, event.Op)
-				if event.Op&fsnotify.Write == fsnotify.Write && policy.SupportedFile(event.Name) {
-					log.Debugf("Reinit ACL on event: Name: %s, Op: %s", event.Name, event.Op)
-					time.Sleep(1000 * time.Millisecond)
-					policy.Init(policyDirectory, debugACL)
+	if _, err = os.Stat(policy.Directory); err == nil {
+		go func() {
+			policy.Init()
+			for {
+				select {
+				case event := <-watcher.Events:
+					if (event.Op&fsnotify.Write == fsnotify.Write ||
+						event.Op&fsnotify.Remove == fsnotify.Remove) && policy.SupportedFile(event.Name) {
+						log.Debugf("Reinit ACL on event: Name: %s, Op: %s", event.Name, event.Op)
+						time.Sleep(1000 * time.Millisecond)
+						policy.Init()
+					}
+				case err := <-watcher.Errors:
+					log.Error("error:", err)
 				}
-			case err := <-watcher.Errors:
-				log.Error("error:", err)
 			}
-		}
-	}(policyDirectory, DebugACL)
+		}()
 
-	err = watcher.Add(policyDirectory)
-	if err != nil {
-		log.Fatal(err)
+		err = watcher.Add(policy.Directory)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	s := <-ch

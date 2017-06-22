@@ -4,10 +4,20 @@ import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-connections/nat"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+)
+
+var (
+	// DebugACL Debug the ACL subsystem
+	DebugACL bool
+	// Directory the policy directory
+	Directory string
+	// AllowWildcard allow the wildcard user to be used for unknown users
+	AllowWildcard bool
 )
 
 // SupportedFile check whether path is a supported configuration file
@@ -17,15 +27,19 @@ func SupportedFile(path string) bool {
 }
 
 // Init initializes the policy engine
-func Init(policydir string, debug bool) error {
-	if debug {
+func Init() error {
+	if DebugACL {
 		log.SetLevel(log.DebugLevel)
 	}
 
 	theconfig = config{}
 
+	if _, err := os.Stat(Directory); err != nil {
+		return err
+	}
+
 	// Traverse the policy dir ...
-	err := filepath.Walk(policydir, wf)
+	err := filepath.Walk(Directory, wf)
 	if err != nil {
 		return err
 	}
@@ -39,37 +53,41 @@ func Init(policydir string, debug bool) error {
 }
 
 // ValidateDev policy
-func ValidateDev(user, dev string) bool {
-	if !userExist(user) {
+func ValidateDev(u, dev string) bool {
+	var ok bool
+	if u, ok = getUser(u); !ok {
 		return false
 	}
-	return stringInSlice(dev, acl[user].Flags)
+	return stringInSlice(dev, acl[u].Devs)
 }
 
 // ValidateCap policy
-func ValidateCap(user, cap string) bool {
-	if !userExist(user) {
+func ValidateCap(u, cap string) bool {
+	var ok bool
+	if u, ok = getUser(u); !ok {
 		return false
 	}
-	return stringInSlice(cap, acl[user].Flags)
+	return stringInSlice(cap, acl[u].Caps)
 }
 
 // ValidateFlag policy
-func ValidateFlag(user, flag string) bool {
-	if !userExist(user) {
+func ValidateFlag(u, flag string) bool {
+	var ok bool
+	if u, ok = getUser(u); !ok {
 		return false
 	}
-	return stringInSlice(flag, acl[user].Flags)
+	return stringInSlice(flag, acl[u].Flags)
 }
 
 // ValidateHostPort policy
-func ValidateHostPort(user string, flag []nat.PortBinding) bool {
-	if !userExist(user) {
+func ValidateHostPort(u string, flag []nat.PortBinding) bool {
+	var ok bool
+	if u, ok = getUser(u); !ok {
 		return false
 	}
 	for _, pb := range flag {
-		log.Debugf("Loop in ValidateHostPort called, %s, %s, %s", user, pb.HostIP, pb.HostPort)
-		for _, policy := range acl[user].PortBindings {
+		log.Debugf("Loop in ValidateHostPort called, %s, %s, %s", u, pb.HostIP, pb.HostPort)
+		for _, policy := range acl[u].PortBindings {
 			if matchPortPolicy(pb, policy) {
 				return true
 			}
@@ -79,20 +97,24 @@ func ValidateHostPort(user string, flag []nat.PortBinding) bool {
 }
 
 // ValidateBind the policy
-func ValidateBind(user, flag string) bool {
-	if !userExist(user) {
+func ValidateBind(u, flag string) bool {
+	var ok bool
+	if u, ok = getUser(u); !ok {
 		return false
 	}
-	log.Infof("ValidateBind called, %s, %s", user, flag)
-	return matchBind(flag, acl[user].Binds)
+	log.Infof("ValidateBind called, %s, %s", u, flag)
+	return matchBind(flag, acl[u].Binds)
 }
 
-func userExist(user string) bool {
-	if _, ok := acl[user]; !ok {
-		log.Debugf("Unknown user: %s", user)
-		return false
+func getUser(u string) (string, bool) {
+	if _, ok := acl[u]; !ok {
+		if AllowWildcard {
+			return "*", true
+		}
+		log.Debugf("Unknown user: %s", u)
+		return "", false
 	}
-	return true
+	return u, true
 }
 
 func matchPortPolicy(pb nat.PortBinding, policy string) bool {
