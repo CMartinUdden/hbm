@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"regexp"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/authorization"
 )
 
@@ -24,7 +25,7 @@ func GetURIInfo(defaultVersion string, req authorization.Request) (Info, error) 
 		return Info{}, err
 	}
 
-	fmt.Println(u.Path)
+	log.Debugf("Authorization request: User: %s, Method: %s, Endpoint: %s", req.User, req.RequestMethod, u.Path)
 
 	result := reURIWithVersion.FindStringSubmatch(u.Path)
 

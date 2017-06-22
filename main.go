@@ -17,7 +17,7 @@
 package main
 
 import (
-	"github.com/CMartinUdden/hbm/cli/command/commands"
+	"github.com/CMartinUdden/hbm/server"
 	log "github.com/Sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +32,7 @@ func newHbmCommand() *cobra.Command {
 	cmd.SetHelpTemplate(helpTemplate)
 	cmd.SetUsageTemplate(usageTemplate)
 
-	commands.AddCommands(cmd)
+	cmd.AddCommand(server.NewServerCommand())
 
 	return cmd
 }

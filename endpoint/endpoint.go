@@ -2,7 +2,7 @@ package endpoint
 
 import (
 	"github.com/CMartinUdden/hbm/allow"
-	"github.com/CMartinUdden/hbm/pkg/uri"
+	"github.com/CMartinUdden/hbm/uri"
 )
 
 // GetUris register URIs

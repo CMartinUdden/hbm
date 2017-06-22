@@ -3,7 +3,7 @@ package uri
 import (
 	"regexp"
 
-	"github.com/CMartinUdden/hbm/allow/types"
+	"github.com/CMartinUdden/hbm/allow"
 	"github.com/docker/go-plugins-helpers/authorization"
 )
 
@@ -11,7 +11,7 @@ import (
 type URI struct {
 	Method      string
 	Re          *regexp.Regexp
-	AllowFunc   func(authorization.Request, *types.Config) *types.AllowResult
+	AllowFunc   func(authorization.Request, *allow.Config) *allow.Result
 	Action      string
 	CmdName     string
 	Description string
@@ -26,7 +26,7 @@ func New() *URIs {
 }
 
 // Register function
-func (uris *URIs) Register(method, uri string, af func(authorization.Request, *types.Config) *types.AllowResult, action, cmdName, desc string) {
+func (uris *URIs) Register(method, uri string, af func(authorization.Request, *allow.Config) *allow.Result, action, cmdName, desc string) {
 	*uris = append(*uris, URI{Method: method, Re: regexp.MustCompile(uri), AllowFunc: af, Action: action, CmdName: cmdName, Description: desc})
 }
 

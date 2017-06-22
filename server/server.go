@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -15,7 +15,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/authorization"
 	"github.com/fsnotify/fsnotify"
-	"github.com/juliengk/go-utils/filedir"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +38,7 @@ func NewServerCommand() *cobra.Command {
 func serverInitConfig() {
 	dockerPluginPath := "/etc/docker/plugins"
 	policyDirectory := "/etc/hbm/policy.d"
-	dockerPluginFile := path.Join(dockerPluginPath, "hbm.spec")
+	dockerPluginFile := filepath.Join(dockerPluginPath, "hbm.spec")
 	pluginSpecContent := []byte("unix://run/docker/plugins/hbm.sock")
 
 	_, err := exec.LookPath("docker")
@@ -49,11 +48,12 @@ func serverInitConfig() {
 		os.Exit(-1)
 	}
 
-	if err := filedir.CreateDirIfNotExist(dockerPluginPath, false, 0755); err != nil {
+	if err := os.MkdirAll(dockerPluginPath, 0755); err != nil {
 		log.Fatal(err)
 	}
 
-	if !filedir.FileExists(dockerPluginFile) {
+	_, err = os.Stat(dockerPluginFile)
+	if err != nil {
 		err := ioutil.WriteFile(dockerPluginFile, pluginSpecContent, 0644)
 		if err != nil {
 			log.Fatal(err)

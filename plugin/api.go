@@ -3,9 +3,9 @@ package plugin
 import (
 	"fmt"
 
-	"github.com/CMartinUdden/hbm/allow/types"
-	"github.com/CMartinUdden/hbm/docker/endpoint"
-	"github.com/CMartinUdden/hbm/pkg/uri"
+	"github.com/CMartinUdden/hbm/allow"
+	"github.com/CMartinUdden/hbm/endpoint"
+	"github.com/CMartinUdden/hbm/uri"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/authorization"
 )
@@ -30,15 +30,15 @@ func NewAPI(version string) (*API, error) {
 }
 
 // Allow function
-func (a *API) Allow(req authorization.Request) *types.AllowResult {
+func (a *API) Allow(req authorization.Request) *allow.Result {
 
 	_, err := uri.GetURIInfo(SupportedVersion, req)
 	if err != nil {
 		// Log event
 		log.Warning(err)
 
-		return &types.AllowResult{Allow: false, Error: err.Error()}
+		return &allow.Result{Allow: false, Error: err.Error()}
 	}
 
-	return &types.AllowResult{Allow: true}
+	return &allow.Result{Allow: true}
 }

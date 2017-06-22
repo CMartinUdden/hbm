@@ -3,7 +3,6 @@ package allow
 import (
 	"fmt"
 
-	"github.com/CMartinUdden/hbm/allow/types"
 	"github.com/CMartinUdden/hbm/policy"
 	"github.com/docker/engine-api/types/swarm"
 	"github.com/docker/go-connections/nat"
@@ -12,12 +11,12 @@ import (
 )
 
 // ServiceCreate called from plugin
-func ServiceCreate(req authorization.Request, config *types.Config) *types.AllowResult {
+func ServiceCreate(req authorization.Request, config *Config) *Result {
 	svc := &swarm.Service{}
 
 	err := json.Decode(req.RequestBody, svc)
 	if err != nil {
-		return &types.AllowResult{Allow: false, Error: err.Error()}
+		return &Result{Allow: false, Error: err.Error()}
 	}
 
 	if svc.Spec.EndpointSpec != nil {
@@ -25,7 +24,7 @@ func ServiceCreate(req authorization.Request, config *types.Config) *types.Allow
 			for _, port := range svc.Spec.EndpointSpec.Ports {
 				pb := []nat.PortBinding{nat.PortBinding{HostIP: "", HostPort: string(port.PublishedPort)}}
 				if !policy.ValidateHostPort(config.Username, pb) {
-					return &types.AllowResult{Allow: false, Msg: fmt.Sprintf("Port %s is not allowed to be pubished", port.PublishedPort)}
+					return &Result{Allow: false, Msg: fmt.Sprintf("Port %s is not allowed to be pubished", port.PublishedPort)}
 				}
 			}
 		}
@@ -35,7 +34,7 @@ func ServiceCreate(req authorization.Request, config *types.Config) *types.Allow
 		for _, mount := range svc.Spec.TaskTemplate.ContainerSpec.Mounts {
 			if mount.Type == "bind" {
 				if len(mount.Source) > 0 {
-					return &types.AllowResult{Allow: false, Msg: fmt.Sprintf("Volume %s is not allowed to be mounted", mount.Source)}
+					return &Result{Allow: false, Msg: fmt.Sprintf("Volume %s is not allowed to be mounted", mount.Source)}
 				}
 			}
 		}
@@ -43,9 +42,9 @@ func ServiceCreate(req authorization.Request, config *types.Config) *types.Allow
 
 	if len(svc.Spec.TaskTemplate.ContainerSpec.User) > 0 {
 		if svc.Spec.TaskTemplate.ContainerSpec.User == "root" && policy.ValidateFlag(config.Username, "container_disallow_root_user") {
-			return &types.AllowResult{Allow: false, Msg: "Running as user \"root\" is not allowed. Please use --user=\"someuser\" param."}
+			return &Result{Allow: false, Msg: "Running as user \"root\" is not allowed. Please use --user=\"someuser\" param."}
 		}
 	}
 
-	return &types.AllowResult{Allow: true}
+	return &Result{Allow: true}
 }

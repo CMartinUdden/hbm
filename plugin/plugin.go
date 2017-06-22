@@ -2,8 +2,8 @@ package plugin
 
 import (
 	"fmt"
-	"github.com/CMartinUdden/hbm/allow/types"
-	"github.com/CMartinUdden/hbm/pkg/uri"
+	"github.com/CMartinUdden/hbm/allow"
+	"github.com/CMartinUdden/hbm/uri"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/authorization"
 )
@@ -42,18 +42,22 @@ func (p *Plugin) AuthZReq(req authorization.Request) authorization.Response {
 	}
 
 	user := req.User
-	config := types.Config{Username: user}
+	config := allow.Config{Username: user}
 
+	log.Debug("start")
 	r := u.AllowFunc(req, &config)
 
 	if r.Error != "" {
+		log.Error("deny error")
 		return authorization.Response{Err: r.Error}
 	}
 
 	if !r.Allow {
+		log.Debug("deny")
 		return authorization.Response{Msg: r.Msg}
 	}
 
+	log.Debug("allow")
 	return authorization.Response{Allow: true}
 }
 

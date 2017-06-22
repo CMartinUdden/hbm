@@ -1,4 +1,4 @@
-package types
+package allow
 
 // Config appconfig structure
 type Config struct {
@@ -6,8 +6,8 @@ type Config struct {
 	Username string
 }
 
-// AllowResult the result structure
-type AllowResult struct {
+// Result the result structure
+type Result struct {
 	Allow bool
 	Msg   string
 	Error string
