@@ -1,33 +1,55 @@
 package plugin
 
 import (
+	"fmt"
+	"github.com/CMartinUdden/hbm/allow/types"
+	"github.com/CMartinUdden/hbm/pkg/uri"
+	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/authorization"
-	"github.com/kassisol/hbm/pkg/uri"
 )
 
-type plugin struct {
+// Plugin structure
+type Plugin struct {
 	appPath string
 }
 
-func NewPlugin(appPath string) (*plugin, error) {
-	return &plugin{appPath: appPath}, nil
+// NewPlugin function
+func NewPlugin() (*Plugin, error) {
+	return &Plugin{appPath: "dummy"}, nil
 }
 
-func (p *plugin) AuthZReq(req authorization.Request) authorization.Response {
+// AuthZReq function
+func (p *Plugin) AuthZReq(req authorization.Request) authorization.Response {
+
 	uriinfo, err := uri.GetURIInfo(SupportedVersion, req)
 	if err != nil {
 		return authorization.Response{Err: err.Error()}
 	}
 
-	a, err := NewApi(uriinfo.Version, p.appPath)
+	a, err := NewAPI(uriinfo.Version)
 	if err != nil {
 		return authorization.Response{Err: err.Error()}
 	}
 
-	r := a.Allow(req)
+	u, err := a.Uris.GetURI(req.RequestMethod, uriinfo.Path)
+	if err != nil {
+		msg := fmt.Sprintf("%s is not implemented", uriinfo.Path)
+
+		// Log event
+		log.Warning(msg)
+
+		return authorization.Response{Allow: false, Err: msg}
+	}
+
+	user := req.User
+	config := types.Config{Username: user}
+
+	r := u.AllowFunc(req, &config)
+
 	if r.Error != "" {
 		return authorization.Response{Err: r.Error}
 	}
+
 	if !r.Allow {
 		return authorization.Response{Msg: r.Msg}
 	}
@@ -35,6 +57,7 @@ func (p *plugin) AuthZReq(req authorization.Request) authorization.Response {
 	return authorization.Response{Allow: true}
 }
 
-func (p *plugin) AuthZRes(req authorization.Request) authorization.Response {
+// AuthZRes function
+func (p *Plugin) AuthZRes(req authorization.Request) authorization.Response {
 	return authorization.Response{Allow: true}
 }

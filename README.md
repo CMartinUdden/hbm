@@ -12,25 +12,6 @@ By default Harbormaster plugin prevents from executing commands with certains pa
   * `--uts=host`
   * any Linux capabilities with parameter `--cap-add=[]`
   * any devices added with parameter `--device=[]`
-  * any dns servers added with parameter `--dns=`
   * any ports added with parameter `--port=`
   * any volumes mounted with parameter `-v`
-  * any logging with parameters "--log-driver" and "--log-opt"
 
-## Versions
-
-Supported Docker versions with HBM.
-
-| HBM Version | Docker Version | Docker API |
-|-------------|----------------|------------|
-| 0.2.x       | 1.12.x         | 1.24       |
-
-## Getting Started & Documentation
-
-All documentation is available on the [Harbormaster website](http://harbormaster.io/docs/hbm/).
-
-## User Feedback
-
-### Issues
-
-If you have any problems with or questions about this application, please contact us through a [GitHub](https://github.com/kassisol/hbm/issues) issue.

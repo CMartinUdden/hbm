@@ -1,26 +1,30 @@
 package server
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path"
+	"sync"
 	"syscall"
+	"time"
 
+	"github.com/CMartinUdden/hbm/plugin"
+	"github.com/CMartinUdden/hbm/policy"
+	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/authorization"
-	"github.com/juliengk/go-log"
-	"github.com/juliengk/go-log/driver"
+	"github.com/fsnotify/fsnotify"
 	"github.com/juliengk/go-utils/filedir"
-	"github.com/kassisol/hbm/cli/command"
-	"github.com/kassisol/hbm/plugin"
-	"github.com/kassisol/hbm/version"
 	"github.com/spf13/cobra"
 )
 
-var serverConfig string
+var (
+	serverConfig    string
+	policyDirectory string
+)
 
+// NewServerCommand new server command
 func NewServerCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "server",
@@ -34,71 +38,86 @@ func NewServerCommand() *cobra.Command {
 
 func serverInitConfig() {
 	dockerPluginPath := "/etc/docker/plugins"
+	policyDirectory := "/etc/hbm/policy.d"
 	dockerPluginFile := path.Join(dockerPluginPath, "hbm.spec")
 	pluginSpecContent := []byte("unix://run/docker/plugins/hbm.sock")
 
-	l, err := log.NewDriver("standard", nil)
+	_, err := exec.LookPath("docker")
 	if err != nil {
-		fmt.Println(err)
-
-		os.Exit(-1)
-	}
-
-	_, err = exec.LookPath("docker")
-	if err != nil {
-		fmt.Println("Docker does not seem to be installed. Please check your installation.")
+		log.Fatal("Docker does not seem to be installed. Please check your installation.")
 
 		os.Exit(-1)
 	}
 
 	if err := filedir.CreateDirIfNotExist(dockerPluginPath, false, 0755); err != nil {
-		l.Fatal(err)
+		log.Fatal(err)
 	}
 
 	if !filedir.FileExists(dockerPluginFile) {
 		err := ioutil.WriteFile(dockerPluginFile, pluginSpecContent, 0644)
 		if err != nil {
-			l.Fatal(err)
+			log.Fatal(err)
 		}
 	}
 
-	l.Info("Server has completed initialization")
+	policy.Init(policyDirectory, true)
+
+	log.Info("Server has completed initialization")
 }
 
 func runStart(cmd *cobra.Command, args []string) {
-	l, err := log.NewDriver("standard", nil)
-	if err != nil {
-		fmt.Println(err)
 
-		os.Exit(-1)
-	}
+	var mutex = &sync.Mutex{}
 
 	serverInitConfig()
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer watcher.Close()
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt)
 	signal.Notify(ch, syscall.SIGTERM)
 
 	go func() {
-		p, err := plugin.NewPlugin(command.AppPath)
+		p, err := plugin.NewPlugin()
 		if err != nil {
-			l.Fatal(err)
+			log.Fatal(err)
 		}
 
 		h := authorization.NewHandler(p)
 
-		l.WithFields(driver.Fields{
-			"storagedriver": "sqlite",
-			"logdriver":     "standard",
-			"version":       version.Version,
-		}).Info("HBM server")
+		log.Info("HBM server")
 
-		l.Info("Listening on socket file")
-		l.Fatal(h.ServeUnix("root", "hbm"))
+		log.Info("Listening on socket file")
+		log.Fatal(h.ServeUnix("root", "hbm"))
 	}()
 
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Events:
+				if event.Op&fsnotify.Write == fsnotify.Write && policy.SupportedFile(event.Name) {
+					log.Debugf("Reinit ACL on event: Name: %s, Op: %s", event.Name, event.Op)
+					time.Sleep(1000 * time.Millisecond)
+					mutex.Lock()
+					policy.Init("/etc/hbm/policy.d", true)
+					mutex.Unlock()
+				}
+			case err := <-watcher.Errors:
+				log.Error("error:", err)
+			}
+		}
+	}()
+
+	err = watcher.Add(policyDirectory)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	s := <-ch
-	l.Infof("Processing signal '%s'", s)
+	log.Infof("Processing signal '%s'", s)
 }
 
 var serverDescription = `
