@@ -1,29 +1,32 @@
 package allow
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/CMartinUdden/hbm/policy"
 	"github.com/docker/engine-api/types/swarm"
 	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-plugins-helpers/authorization"
-	"github.com/juliengk/go-utils/json"
 )
 
 // ServiceCreate called from plugin
 func ServiceCreate(req authorization.Request, config *Config) *Result {
 	svc := &swarm.Service{}
 
-	err := json.Decode(req.RequestBody, svc)
+	b := []byte(req.RequestBody)
+	err := json.Unmarshal(b, svc)
 	if err != nil {
 		return &Result{Allow: false, Error: err.Error()}
 	}
 
+	acl := policy.GetACL(config.Username)
+
 	if svc.Spec.EndpointSpec != nil {
 		if len(svc.Spec.EndpointSpec.Ports) > 0 {
 			for _, port := range svc.Spec.EndpointSpec.Ports {
-				pb := []nat.PortBinding{nat.PortBinding{HostIP: "", HostPort: string(port.PublishedPort)}}
-				if !policy.ValidateHostPort(config.Username, pb) {
+				pb := nat.PortBinding{HostIP: "", HostPort: string(port.PublishedPort)}
+				if !policy.ValidateHostPort(acl, pb) {
 					return &Result{Allow: false, Msg: fmt.Sprintf("Port %s is not allowed to be pubished", port.PublishedPort)}
 				}
 			}
@@ -41,7 +44,7 @@ func ServiceCreate(req authorization.Request, config *Config) *Result {
 	}
 
 	if len(svc.Spec.TaskTemplate.ContainerSpec.User) > 0 {
-		if svc.Spec.TaskTemplate.ContainerSpec.User == "root" && policy.ValidateFlag(config.Username, "container_disallow_root_user") {
+		if svc.Spec.TaskTemplate.ContainerSpec.User == "root" && policy.ValidateFlag(acl, "container_disallow_root_user") {
 			return &Result{Allow: false, Msg: "Running as user \"root\" is not allowed. Please use --user=\"someuser\" param."}
 		}
 	}

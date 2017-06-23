@@ -1,13 +1,15 @@
 package allow
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
+	"regexp"
 
 	"github.com/CMartinUdden/hbm/policy"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/engine-api/types/container"
 	"github.com/docker/go-plugins-helpers/authorization"
-	"github.com/juliengk/go-utils/json"
 )
 
 var (
@@ -22,107 +24,133 @@ type volumeOptions struct {
 	NoSuid    bool
 }
 
+type containerCreateConfig struct {
+	container.Config
+	HostConfig container.HostConfig
+}
+
 // ContainerCreate called from plugin
 func ContainerCreate(req authorization.Request, config *Config) *Result {
-	type ContainerCreateConfig struct {
-		container.Config
-		HostConfig container.HostConfig
-	}
+	log.Debug("asdf")
+	acl := policy.GetACL(config.Username)
 
-	log.Info("Hello from ContainerCreate!")
+	failmsg := "%s Using %s for user \"" + config.Username + "\" from ACL entry " + acl.String()
 
-	cc := &ContainerCreateConfig{}
+	cc := &containerCreateConfig{}
 
-	err := json.Decode(req.RequestBody, cc)
+	b := []byte(req.RequestBody)
+	err := json.Unmarshal(b, cc)
 
 	if err != nil {
 		return &Result{Allow: false, Error: err.Error()}
 	}
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if cc.HostConfig.Privileged {
-		if !policy.ValidateFlag(config.Username, "container_create_privileged") {
-			return &Result{Allow: false, Msg: "--privileged param is not allowed"}
+	vfuncs := []interface{}{validateFlags, validateDevs, validateCaps, validateBinds, validateHostPorts}
+	for _, fi := range vfuncs {
+		r := vcall(fi, cc, acl, failmsg)
+		if !r.Allow {
+			return r
 		}
 	}
 
-	if cc.HostConfig.IpcMode == "host" {
-		if !policy.ValidateFlag(config.Username, "container_create_ipc_host") {
-			return &Result{Allow: false, Msg: "--ipc=\"host\" param is not allowed"}
-		}
-	}
+	return &Result{Allow: true}
+}
 
-	if cc.HostConfig.NetworkMode == "host" {
-		if !policy.ValidateFlag(config.Username, "container_create_net_host") {
-			return &Result{Allow: false, Msg: "--net=\"host\" param is not allowed"}
-		}
-	}
-
-	if cc.HostConfig.PidMode == "host" {
-		if !policy.ValidateFlag(config.Username, "container_create_pid_host") {
-			return &Result{Allow: false, Msg: "--pid=\"host\" param is not allowed"}
-		}
-	}
-
-	if cc.HostConfig.UsernsMode == "host" {
-		if !policy.ValidateFlag(config.Username, "container_create_userns_host") {
-			return &Result{Allow: false, Msg: "--userns=\"host\" param is not allowed"}
-		}
-	}
-
-	if cc.HostConfig.UTSMode == "host" {
-		if !policy.ValidateFlag(config.Username, "container_create_uts_host") {
-			return &Result{Allow: false, Msg: "--uts=\"host\" param is not allowed"}
-		}
-	}
-
-	if len(cc.HostConfig.CapAdd) > 0 {
-		for _, c := range cc.HostConfig.CapAdd {
-			if !policy.ValidateCap(config.Username, c) {
-				return &Result{Allow: false, Msg: fmt.Sprintf("Capability %s is not allowed", c)}
-			}
-		}
-	}
-
+func validateDevs(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
 	if len(cc.HostConfig.Devices) > 0 {
 		for _, dev := range cc.HostConfig.Devices {
-			if !policy.ValidateDev(config.Username, dev.PathOnHost) {
-				return &Result{Allow: false, Msg: fmt.Sprintf("Device %s is not allowed to be exported", dev.PathOnHost)}
-			}
-		}
-	}
-
-	if cc.HostConfig.PublishAllPorts {
-		if !policy.ValidateFlag(config.Username, "container_publish_all") {
-			return &Result{Allow: false, Msg: "--publish-all param is not allowed"}
-		}
-	}
-
-	if cc.User == "root" {
-		if policy.ValidateFlag(config.Username, "container_disallow_root_user") {
-			msg := fmt.Sprintf("Running as user %s is not allowed.", cc.User)
-			return &Result{Allow: false, Msg: msg}
-		}
-	}
-
-	if len(cc.HostConfig.PortBindings) > 0 {
-		for _, pbs := range cc.HostConfig.PortBindings {
-			if !policy.ValidateHostPort(config.Username, pbs) {
-				return &Result{Allow: false, Msg: fmt.Sprintf("Host port publication %s is not allowed", pbs)}
-			}
-		}
-	}
-
-	if len(cc.HostConfig.Binds) > 0 {
-		for _, b := range cc.HostConfig.Binds {
-			if !policy.ValidateBind(config.Username, b) {
-				return &Result{Allow: false, Msg: fmt.Sprintf("Volume %s is not allowed to be mounted", b)}
+			if !policy.ValidateDev(acl, dev.PathOnHost) {
+				msg := fmt.Sprintf(failmsg, dev.PathOnHost+" (--device=\""+dev.PathOnHost+"\" run parameter) is not allowed.", "devs")
+				return &Result{Allow: false, Msg: msg}
 			}
 		}
 	}
 
 	return &Result{Allow: true}
+}
+
+func validateHostPorts(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+	if len(cc.HostConfig.PortBindings) > 0 {
+		for containerport, pbs := range cc.HostConfig.PortBindings {
+			for _, pb := range pbs {
+				if !policy.ValidateHostPort(acl, pb) {
+					s := ""
+					if pb.HostIP != "" {
+						s = pb.HostIP + ":"
+					}
+					s += pb.HostPort + ":" + string(containerport)
+					re, _ := regexp.Compile("/.*")
+					sc := re.ReplaceAllString(s, "")
+					pmsg := fmt.Sprintf("Host port publication %s (--publish=%s, -p %s run parameter) is not allowed.", s, sc, sc)
+					msg := fmt.Sprintf(failmsg, pmsg, "portbindings")
+					return &Result{Allow: false, Msg: msg}
+				}
+			}
+		}
+	}
+
+	return &Result{Allow: true}
+}
+
+func validateBinds(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+	if len(cc.HostConfig.Binds) > 0 {
+		for _, b := range cc.HostConfig.Binds {
+			if !policy.ValidateBind(acl, b) {
+				msg := fmt.Sprintf(failmsg, "Host bind "+b+" (-v "+b+" run parameter) is not allowed.", "binds")
+				return &Result{Allow: false, Msg: msg}
+			}
+		}
+	}
+
+	return &Result{Allow: true}
+}
+
+func validateCaps(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+	if len(cc.HostConfig.CapAdd) > 0 {
+		for _, c := range cc.HostConfig.CapAdd {
+			if !policy.ValidateCap(acl, c) {
+				msg := fmt.Sprintf(failmsg, c+" (--cap-add=\""+c+"\" run parameter) is not allowed.", "caps")
+				return &Result{Allow: false, Msg: msg}
+			}
+		}
+	}
+	return &Result{Allow: true}
+}
+
+func validateFlags(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+	type flagt struct {
+		p    bool
+		name string
+		fmsg string
+	}
+
+	flags := []flagt{
+		flagt{p: cc.HostConfig.Privileged, name: "container_create_privileged", fmsg: "(--privileged run parameter) is not allowed."},
+		flagt{p: cc.HostConfig.IpcMode == "host", name: "container_create_ipc_host", fmsg: "(--ipc=\"host\" run parameter) is not allowed."},
+		flagt{p: cc.HostConfig.NetworkMode == "host", name: "container_create_net_host", fmsg: "(--net=\"host\" run parameter) is not allowed."},
+		flagt{p: cc.HostConfig.PidMode == "host", name: "container_create_pid_host", fmsg: "(--pid=\"host\" run parameter) is not allowed."},
+		flagt{p: cc.HostConfig.UsernsMode == "host", name: "container_create_userns_host", fmsg: "(--userns=\"host\" run parameter) is not allowed."},
+		flagt{p: cc.HostConfig.UTSMode == "host", name: "container_create_uts_host", fmsg: "(--uts=\"host\" run parameter) is not allowed."},
+		flagt{p: cc.HostConfig.PublishAllPorts, name: "container_publish_all", fmsg: "(--publish-all run parameter) is not allowed"}}
+	for _, flag := range flags {
+		if flag.p {
+			if !policy.ValidateFlag(acl, flag.name) {
+				msg := fmt.Sprintf(failmsg, flag.name+" "+flag.fmsg, "flags")
+				return &Result{Allow: false, Msg: msg}
+			}
+		}
+	}
+
+	return &Result{Allow: true}
+}
+
+func vcall(fi interface{}, cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+	f := reflect.ValueOf(fi)
+	args := []reflect.Value{reflect.ValueOf(cc), reflect.ValueOf(acl), reflect.ValueOf(failmsg)}
+	r := f.Call(args)
+	if len(r) > 0 {
+		return r[0].Interface().(*Result)
+	}
+	log.Errorf("Error in container validation")
+	return &Result{Allow: false, Msg: "Unkown error"}
 }

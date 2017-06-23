@@ -88,7 +88,7 @@ func runStart(cmd *cobra.Command, args []string) {
 		log.Info("HBM server")
 
 		log.Info("Listening on socket file")
-		log.Fatal(h.ServeUnix("root", "hbm"))
+		log.Fatal(h.ServeUnix("hbm", 0))
 	}()
 
 	if _, err = os.Stat(policy.Directory); err == nil {

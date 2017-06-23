@@ -52,68 +52,64 @@ func Init() error {
 	return nil
 }
 
-// ValidateDev policy
-func ValidateDev(u, dev string) bool {
-	var ok bool
-	if u, ok = getUser(u); !ok {
-		return false
+// GetACL gets a specific ACL
+func GetACL(user string) *ACL {
+	user, ok := getUser(user)
+
+	if !ok {
+		return &ACL{Name: user}
 	}
-	return stringInSlice(dev, acl[u].Devs)
+
+	if user == "*" {
+		if _, ok := acl[user]; !ok {
+			return &ACL{Name: user}
+		}
+	}
+	return acl[user]
+}
+
+// ValidateDev policy
+func ValidateDev(u *ACL, dev string) bool {
+	return stringInSlice(dev, u.Devs)
 }
 
 // ValidateCap policy
-func ValidateCap(u, cap string) bool {
-	var ok bool
-	if u, ok = getUser(u); !ok {
-		return false
-	}
-	return stringInSlice(cap, acl[u].Caps)
+func ValidateCap(u *ACL, cap string) bool {
+	return stringInSlice(cap, u.Caps)
 }
 
 // ValidateFlag policy
-func ValidateFlag(u, flag string) bool {
-	var ok bool
-	if u, ok = getUser(u); !ok {
-		return false
-	}
-	return stringInSlice(flag, acl[u].Flags)
+func ValidateFlag(u *ACL, flag string) bool {
+	return stringInSlice(flag, u.Flags)
 }
 
 // ValidateHostPort policy
-func ValidateHostPort(u string, flag []nat.PortBinding) bool {
-	var ok bool
-	if u, ok = getUser(u); !ok {
-		return false
-	}
-	for _, pb := range flag {
-		log.Debugf("Loop in ValidateHostPort called, %s, %s, %s", u, pb.HostIP, pb.HostPort)
-		for _, policy := range acl[u].PortBindings {
-			if matchPortPolicy(pb, policy) {
-				return true
-			}
+func ValidateHostPort(u *ACL, flag nat.PortBinding) bool {
+	log.Debugf("Loop in ValidateHostPort called, %s, %s, %s", u, flag.HostIP, flag.HostPort)
+	for _, policy := range u.PortBindings {
+		if matchPortPolicy(flag, policy) {
+			return true
 		}
 	}
 	return false
 }
 
 // ValidateBind the policy
-func ValidateBind(u, flag string) bool {
-	var ok bool
-	if u, ok = getUser(u); !ok {
-		return false
-	}
+func ValidateBind(u *ACL, flag string) bool {
 	log.Infof("ValidateBind called, %s, %s", u, flag)
-	return matchBind(flag, acl[u].Binds)
+	return matchBind(flag, u.Binds)
 }
 
 func getUser(u string) (string, bool) {
 	if _, ok := acl[u]; !ok {
 		if AllowWildcard {
+			log.Debugf("Returning wildcard: %s", u)
 			return "*", true
 		}
 		log.Debugf("Unknown user: %s", u)
 		return "", false
 	}
+	log.Debugf("Returning user: %s", u)
 	return u, true
 }
 

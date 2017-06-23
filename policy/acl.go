@@ -2,10 +2,13 @@ package policy
 
 import (
 	"encoding/json"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
 	"io/ioutil"
 	"os"
+	"reflect"
+	"strings"
 )
 
 var theconfig config
@@ -17,7 +20,7 @@ type bind struct {
 	ReadOnly bool
 }
 
-type aclentry struct {
+type ACL struct {
 	Name         string
 	Members      []string
 	Binds        []bind
@@ -49,7 +52,7 @@ type topbind struct {
 }
 
 type config struct {
-	Groups       []aclentry
+	Groups       []ACL
 	Users        []user
 	Binds        []topbind
 	Caps         []res
@@ -58,12 +61,33 @@ type config struct {
 	PortBindings []res
 }
 
-var thegroups map[string]*aclentry
-var acl map[string]*aclentry
+var thegroups map[string]*ACL
+var acl map[string]*ACL
+
+func (e *ACL) String() string {
+	//return spew.Sdump(e)
+	return myDump(*e)
+}
+
+func (e bind) String() string {
+	//return spew.Sdump(e)
+	return myDump(e)
+}
+
+func myDump(e interface{}) string {
+	v := reflect.ValueOf(e)
+
+	s := []string{}
+	for i := 0; i < v.NumField(); i++ {
+		s = append(s, fmt.Sprintf("%s: %s", v.Type().Field(i).Name, v.Field(i)))
+	}
+
+	return "{" + strings.Join(s, ", ") + "}"
+}
 
 func calculateacl() {
-	thegroups = make(map[string]*aclentry)
-	acl = make(map[string]*aclentry)
+	thegroups = make(map[string]*ACL)
+	acl = make(map[string]*ACL)
 	var allgroups []string
 	var groups []string
 	var bg []bindgroup
@@ -71,7 +95,7 @@ func calculateacl() {
 	// We start by builing the global groups var (thegroups)
 	// This contains all the policies group indexed
 	for _, g := range theconfig.Groups {
-		thegroups[g.Name] = &aclentry{Name: g.Name, Members: g.Members, Binds: g.Binds,
+		thegroups[g.Name] = &ACL{Name: g.Name, Members: g.Members, Binds: g.Binds,
 			Caps: g.Caps, Devs: g.Devs, Flags: g.Flags, PortBindings: g.PortBindings}
 		allgroups = append(allgroups, g.Name)
 	}
@@ -171,10 +195,10 @@ func calculateacl() {
 }
 
 // Make sure we have a named entry in a acl map
-func addentry(g string, themap map[string]*aclentry) {
+func addentry(g string, themap map[string]*ACL) {
 	_, ok := themap[g]
 	if !ok {
-		themap[g] = &aclentry{Name: g}
+		themap[g] = &ACL{Name: g}
 	}
 }
 
@@ -225,7 +249,7 @@ func addbind(b topbind, groups []bindgroup) {
 }
 
 // Adds a group to the user indexed ACL, for easy lookup
-func addgroup(user string, g string, themap map[string]*aclentry) {
+func addgroup(user string, g string, themap map[string]*ACL) {
 	addentry(user, themap)
 	if !stringInSlice(g, themap[user].Groups) {
 		themap[user].Groups = append(themap[user].Groups, g)
@@ -233,7 +257,7 @@ func addgroup(user string, g string, themap map[string]*aclentry) {
 }
 
 // Adds a kernel cap to either the group structure or the user indexed ACL
-func addcap(name string, items []string, themap map[string]*aclentry) {
+func addcap(name string, items []string, themap map[string]*ACL) {
 	for _, g := range items {
 		addentry(g, themap)
 		if !stringInSlice(name, themap[g].Caps) {
@@ -243,7 +267,7 @@ func addcap(name string, items []string, themap map[string]*aclentry) {
 }
 
 // Adds a device to either the group structure or the user indexed ACL
-func adddev(name string, items []string, themap map[string]*aclentry) {
+func adddev(name string, items []string, themap map[string]*ACL) {
 	for _, g := range items {
 		addentry(g, themap)
 		if !stringInSlice(name, themap[g].Devs) {
@@ -253,7 +277,7 @@ func adddev(name string, items []string, themap map[string]*aclentry) {
 }
 
 // Adds a container create flag to either the group structure or the user indexed ACL
-func addflag(name string, items []string, themap map[string]*aclentry) {
+func addflag(name string, items []string, themap map[string]*ACL) {
 	for _, g := range items {
 		addentry(g, themap)
 		if !stringInSlice(name, themap[g].Flags) {
@@ -263,7 +287,7 @@ func addflag(name string, items []string, themap map[string]*aclentry) {
 }
 
 // Adds a host port binding policy to either the group structure or the user indexed ACL
-func addportbinding(name string, items []string, themap map[string]*aclentry) {
+func addportbinding(name string, items []string, themap map[string]*ACL) {
 	for _, g := range items {
 		addentry(g, themap)
 		if !stringInSlice(name, themap[g].PortBindings) {
