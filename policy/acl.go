@@ -2,16 +2,15 @@ package policy
 
 import (
 	"encoding/json"
-	"fmt"
+	"github.com/CMartinUdden/hbm/utils"
 	log "github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
 	"io/ioutil"
 	"os"
 	"reflect"
-	"strings"
 )
 
-var theconfig config
+var theconfig *config
 
 var supportedSuffixes = []string{".json"}
 
@@ -66,23 +65,12 @@ var acl map[string]*ACL
 
 func (e *ACL) String() string {
 	//return spew.Sdump(e)
-	return myDump(*e)
+	return utils.Sdump(*e)
 }
 
 func (e bind) String() string {
 	//return spew.Sdump(e)
-	return myDump(e)
-}
-
-func myDump(e interface{}) string {
-	v := reflect.ValueOf(e)
-
-	s := []string{}
-	for i := 0; i < v.NumField(); i++ {
-		s = append(s, fmt.Sprintf("%s: %s", v.Type().Field(i).Name, v.Field(i)))
-	}
-
-	return "{" + strings.Join(s, ", ") + "}"
+	return utils.Sdump(e)
 }
 
 func calculateacl() {
@@ -99,8 +87,6 @@ func calculateacl() {
 			Caps: g.Caps, Devs: g.Devs, Flags: g.Flags, PortBindings: g.PortBindings}
 		allgroups = append(allgroups, g.Name)
 	}
-
-	log.Debugf("Groups before group construction %s", allgroups)
 
 	for _, user := range theconfig.Users {
 		if len(user.Groups) > 0 && user.Groups[0] == "*" {
@@ -122,47 +108,27 @@ func calculateacl() {
 		addbind(bind, bg)
 	}
 
-	for _, cap := range theconfig.Caps {
-		if len(cap.Groups) > 0 && cap.Groups[0] == "*" {
-			groups = allgroups
-		} else {
-			groups = cap.Groups
-		}
-		addcap(cap.Name, groups, thegroups)
+	type rs struct {
+		r []res
+		s string
 	}
 
-	for _, dev := range theconfig.Devs {
-		if len(dev.Groups) > 0 && dev.Groups[0] == "*" {
-			groups = allgroups
-		} else {
-			groups = dev.Groups
+	for _, x := range []rs{rs{theconfig.Caps, "Caps"}, rs{theconfig.Devs, "Devs"}, rs{theconfig.Flags, "Flags"}, rs{theconfig.PortBindings, "PortBindings"}} {
+		for _, r := range x.r {
+			if len(r.Groups) > 0 && r.Groups[0] == "*" {
+				groups = allgroups
+			} else {
+				groups = r.Groups
+			}
+			addres(r, groups, thegroups, x.s)
 		}
-		adddev(dev.Name, groups, thegroups)
-	}
-
-	for _, flag := range theconfig.Flags {
-		if len(flag.Groups) > 0 && flag.Groups[0] == "*" {
-			groups = allgroups
-		} else {
-			groups = flag.Groups
-		}
-		addflag(flag.Name, groups, thegroups)
-	}
-
-	for _, portbinding := range theconfig.PortBindings {
-		if len(portbinding.Groups) > 0 && portbinding.Groups[0] == "*" {
-			groups = allgroups
-		} else {
-			groups = portbinding.Groups
-		}
-		addportbinding(portbinding.Name, groups, thegroups)
 	}
 
 	allgroups = []string{}
+
 	for g := range thegroups {
 		allgroups = append(allgroups, g)
 	}
-	log.Debugf("Groups after group construction %s", allgroups)
 
 	// Now we create the ACL var, indexed by user name for easy lookup
 	// We treat the users as dummy groups
@@ -173,20 +139,20 @@ func calculateacl() {
 			for _, bind := range g.Binds {
 				adduserbind(bind, user)
 			}
-			for _, cap := range g.Caps {
-				addcap(cap, s, acl)
+			for _, c := range g.Caps {
+				addres(res{Name: c}, s, acl, "Caps")
 			}
 
-			for _, dev := range g.Devs {
-				adddev(dev, s, acl)
+			for _, d := range g.Devs {
+				addres(res{Name: d}, s, acl, "Devs")
 			}
 
-			for _, flag := range g.Flags {
-				addflag(flag, s, acl)
+			for _, f := range g.Flags {
+				addres(res{Name: f}, s, acl, "Flags")
 			}
 
-			for _, pb := range g.PortBindings {
-				addportbinding(pb, s, acl)
+			for _, p := range g.PortBindings {
+				addres(res{Name: p}, s, acl, "PortBindings")
 			}
 		}
 	}
@@ -206,7 +172,7 @@ func addentry(g string, themap map[string]*ACL) {
 func adduser(u user, groups []string) {
 	for _, g := range groups {
 		addentry(g, thegroups)
-		if !stringInSlice(u.Name, thegroups[g].Members) {
+		if !utils.StringInSlice(u.Name, thegroups[g].Members) {
 			thegroups[g].Members = append(thegroups[g].Members, u.Name)
 		}
 	}
@@ -251,92 +217,29 @@ func addbind(b topbind, groups []bindgroup) {
 // Adds a group to the user indexed ACL, for easy lookup
 func addgroup(user string, g string, themap map[string]*ACL) {
 	addentry(user, themap)
-	if !stringInSlice(g, themap[user].Groups) {
+	if !utils.StringInSlice(g, themap[user].Groups) {
 		themap[user].Groups = append(themap[user].Groups, g)
 	}
 }
 
-// Adds a kernel cap to either the group structure or the user indexed ACL
-func addcap(name string, items []string, themap map[string]*ACL) {
+func addres(r res, items []string, themap map[string]*ACL, field string) {
 	for _, g := range items {
 		addentry(g, themap)
-		if !stringInSlice(name, themap[g].Caps) {
-			themap[g].Caps = append(themap[g].Caps, name)
-		}
-	}
-}
+		rv := utils.GetFieldInStruct(themap[g], field).(reflect.Value)
+		slice := rv.Interface().([]string)
 
-// Adds a device to either the group structure or the user indexed ACL
-func adddev(name string, items []string, themap map[string]*ACL) {
-	for _, g := range items {
-		addentry(g, themap)
-		if !stringInSlice(name, themap[g].Devs) {
-			themap[g].Devs = append(themap[g].Devs, name)
+		if !utils.StringInSlice(r.Name, slice) {
+			slice = append(slice, r.Name)
+			utils.SetFieldInStruct(themap[g], field, reflect.ValueOf(slice))
 		}
 	}
-}
-
-// Adds a container create flag to either the group structure or the user indexed ACL
-func addflag(name string, items []string, themap map[string]*ACL) {
-	for _, g := range items {
-		addentry(g, themap)
-		if !stringInSlice(name, themap[g].Flags) {
-			themap[g].Flags = append(themap[g].Flags, name)
-		}
-	}
-}
-
-// Adds a host port binding policy to either the group structure or the user indexed ACL
-func addportbinding(name string, items []string, themap map[string]*ACL) {
-	for _, g := range items {
-		addentry(g, themap)
-		if !stringInSlice(name, themap[g].PortBindings) {
-			themap[g].PortBindings = append(themap[g].PortBindings, name)
-		}
-	}
-}
-
-func stringInSlice(s string, slice []string) bool {
-	for _, i := range slice {
-		if i == s {
-			return true
-		}
-	}
-	return false
 }
 
 // Build the top conf objects
 func configmerge(c *config) {
-
-	log.Debugf("in configmerge")
-	for _, group := range c.Groups {
-		theconfig.Groups = append(theconfig.Groups, group)
+	for _, field := range []string{"Groups", "Users", "Binds", "Caps", "Devs", "Flags", "PortBindings"} {
+		utils.MergeSliceField(c, theconfig, field)
 	}
-
-	for _, user := range c.Users {
-		theconfig.Users = append(theconfig.Users, user)
-	}
-
-	for _, bind := range c.Binds {
-		theconfig.Binds = append(theconfig.Binds, bind)
-	}
-
-	for _, cap := range c.Caps {
-		theconfig.Caps = append(theconfig.Caps, cap)
-	}
-
-	for _, dev := range c.Devs {
-		theconfig.Devs = append(theconfig.Devs, dev)
-	}
-
-	for _, flag := range c.Flags {
-		theconfig.Flags = append(theconfig.Flags, flag)
-	}
-
-	for _, portbinding := range c.PortBindings {
-		theconfig.PortBindings = append(theconfig.PortBindings, portbinding)
-	}
-	log.Debugf("after configmerge")
 }
 
 func wf(path string, info os.FileInfo, err error) error {
@@ -351,20 +254,15 @@ func wf(path string, info os.FileInfo, err error) error {
 
 		c = config{}
 
-		log.Debugf("before unmarshal")
 		err = json.Unmarshal(data, &c)
 
 		if err != nil {
 			log.Errorf("Unable to parse json file %s: %s", path, err)
 			return err
 		}
-		log.Debugf("after unmarshal")
 
 		// and merge the configuration into the global conf var
 		configmerge(&c)
-
-		log.Debugf("Read config: %s", spew.Sdump(theconfig))
-
 	}
 
 	return nil

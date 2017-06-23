@@ -30,8 +30,7 @@ func NewServerCommand() *cobra.Command {
 		Run:   runStart,
 	}
 	flags := cmd.Flags()
-	flags.BoolVarP(&policy.DebugACL, "debugacl", "a", false, "Debug the ACL subsystem")
-	flags.BoolVarP(&policy.AllowWildcard, "allowwildcard", "w", false, "Allow the wildcard user \"*\" to be used for unknown users")
+	flags.BoolVarP(&policy.DebugACL, "debug", "D", false, "Debug the ACL subsystem")
 	flags.StringVarP(&policy.Directory, "policydir", "d", "/etc/hbm/policy.d", "ACL policy directory")
 
 	return cmd

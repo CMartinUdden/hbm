@@ -54,20 +54,16 @@ func (p *Plugin) AuthZReq(req authorization.Request) authorization.Response {
 	user := req.User
 	config := allow.Config{Username: user}
 
-	log.Debug("start")
 	r := u.AllowFunc(req, &config)
 
 	if r.Error != "" {
-		log.Error("deny error")
 		return authorization.Response{Err: r.Error}
 	}
 
 	if !r.Allow {
-		log.Debug("deny")
 		return authorization.Response{Msg: r.Msg}
 	}
 
-	log.Debug("allow")
 	return authorization.Response{Allow: true}
 }
 

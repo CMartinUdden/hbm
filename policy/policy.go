@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"github.com/CMartinUdden/hbm/utils"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-connections/nat"
 	"os"
@@ -16,14 +17,12 @@ var (
 	DebugACL bool
 	// Directory the policy directory
 	Directory string
-	// AllowWildcard allow the wildcard user to be used for unknown users
-	AllowWildcard bool
 )
 
 // SupportedFile check whether path is a supported configuration file
 func SupportedFile(path string) bool {
 	ext := filepath.Ext(path)
-	return stringInSlice(ext, supportedSuffixes)
+	return utils.StringInSlice(ext, supportedSuffixes)
 }
 
 // Init initializes the policy engine
@@ -32,7 +31,7 @@ func Init() error {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	theconfig = config{}
+	theconfig = &config{}
 
 	if _, err := os.Stat(Directory); err != nil {
 		return err
@@ -70,24 +69,24 @@ func GetACL(user string) *ACL {
 
 // ValidateDev policy
 func ValidateDev(u *ACL, dev string) bool {
-	return stringInSlice(dev, u.Devs)
+	return utils.StringsInSlice([]string{dev, "*"}, u.Devs)
 }
 
 // ValidateCap policy
 func ValidateCap(u *ACL, cap string) bool {
-	return stringInSlice(cap, u.Caps)
+	return utils.StringsInSlice([]string{cap, "*"}, u.Caps)
 }
 
 // ValidateFlag policy
 func ValidateFlag(u *ACL, flag string) bool {
-	return stringInSlice(flag, u.Flags)
+	return utils.StringsInSlice([]string{flag, "*"}, u.Flags)
 }
 
 // ValidateHostPort policy
 func ValidateHostPort(u *ACL, flag nat.PortBinding) bool {
-	log.Debugf("Loop in ValidateHostPort called, %s, %s, %s", u, flag.HostIP, flag.HostPort)
+	log.Debugf("ValidateHostPort called, %#v, %#v, %#v, container_publish_all: %t", u, flag.HostIP, flag.HostPort)
 	for _, policy := range u.PortBindings {
-		if matchPortPolicy(flag, policy) {
+		if matchPortPolicy(flag, policy) || ValidateFlag(u, "container_publish_all") {
 			return true
 		}
 	}
@@ -96,20 +95,14 @@ func ValidateHostPort(u *ACL, flag nat.PortBinding) bool {
 
 // ValidateBind the policy
 func ValidateBind(u *ACL, flag string) bool {
-	log.Infof("ValidateBind called, %s, %s", u, flag)
+	log.Debugf("ValidateBind called, %#v, %#v", u, flag)
 	return matchBind(flag, u.Binds)
 }
 
 func getUser(u string) (string, bool) {
 	if _, ok := acl[u]; !ok {
-		if AllowWildcard {
-			log.Debugf("Returning wildcard: %s", u)
-			return "*", true
-		}
-		log.Debugf("Unknown user: %s", u)
-		return "", false
+		return "*", true
 	}
-	log.Debugf("Returning user: %s", u)
 	return u, true
 }
 
@@ -175,27 +168,26 @@ func matchPortPolicy(pb nat.PortBinding, policy string) bool {
 }
 
 func matchBind(bindrequest string, policies []bind) bool {
-	failmsg := fmt.Sprintf("No match for bind request: %s", bindrequest)
-	log.Debugf("policies %s", policies)
+	failmsg := fmt.Sprintf("No match for bind request: %#v", bindrequest)
 	for _, policy := range policies {
 		sl := strings.Split(bindrequest, ":")
 		hostpath := sl[0]
 		options := sl[2:]
-		roreq := stringInSlice("ro", options)
-		msg := fmt.Sprintf("request: %s, policy path: %s, policy readonly: %s", bindrequest, policy.Path, policy.ReadOnly)
-		passmsg := fmt.Sprintf("Passing host path %s on request: %s", hostpath, msg)
-		errmsg := fmt.Sprintf("Error parsing bind request: %s, error: %%s", msg)
+		roreq := utils.StringInSlice("ro", options)
+		msg := fmt.Sprintf("request: %#v, policy path: %#v, policy readonly: %t", bindrequest, policy.Path, policy.ReadOnly)
+		passmsg := fmt.Sprintf("Passing host path %#v on request: %#v", hostpath, msg)
+		errmsg := fmt.Sprintf("Error parsing bind request: %#v, error: %%s", msg)
 		if ok, _ := regexp.MatchString("^/", policy.Path); !ok {
 			log.Errorf(errmsg, "Policy path needs to be aboslute")
 			continue
 		}
-		restring := fmt.Sprintf("^(%s|^%s/.*)$", policy.Path, policy.Path)
+		restring := fmt.Sprintf(`^(%s|^%s/.*)$`, policy.Path, policy.Path)
 		re, err := regexp.Compile(restring)
 		if err != nil {
 			log.Errorf(errmsg, err)
 		}
 
-		if re.MatchString(policy.Path) {
+		if re.MatchString(hostpath) || policy.Path == "/*" {
 			log.Debugf("path match")
 			if roreq {
 				log.Debugf(passmsg, "readonly")

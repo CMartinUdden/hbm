@@ -3,20 +3,13 @@ package allow
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"regexp"
 
 	"github.com/CMartinUdden/hbm/policy"
-	log "github.com/Sirupsen/logrus"
+	"github.com/CMartinUdden/hbm/utils"
+	//	log "github.com/Sirupsen/logrus"
 	"github.com/docker/engine-api/types/container"
 	"github.com/docker/go-plugins-helpers/authorization"
-)
-
-var (
-	// AllHostPorts Allow all host port publications
-	AllHostPorts bool
-	// HiHostPorts Allow high host port publications (>1024)
-	HiHostPorts bool
 )
 
 type volumeOptions struct {
@@ -31,7 +24,6 @@ type containerCreateConfig struct {
 
 // ContainerCreate called from plugin
 func ContainerCreate(req authorization.Request, config *Config) *Result {
-	log.Debug("asdf")
 	acl := policy.GetACL(config.Username)
 
 	failmsg := "%s Using %s for user \"" + config.Username + "\" from ACL entry " + acl.String()
@@ -45,9 +37,8 @@ func ContainerCreate(req authorization.Request, config *Config) *Result {
 		return &Result{Allow: false, Error: err.Error()}
 	}
 
-	vfuncs := []interface{}{validateFlags, validateDevs, validateCaps, validateBinds, validateHostPorts}
-	for _, fi := range vfuncs {
-		r := vcall(fi, cc, acl, failmsg)
+	for _, fi := range []interface{}{validateFlags, validateDevs, validateCaps, validateBinds, validateHostPorts} {
+		r := utils.Vcall(fi, []interface{}{cc, acl, failmsg})[0].Interface().(*Result)
 		if !r.Allow {
 			return r
 		}
@@ -142,15 +133,4 @@ func validateFlags(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *
 	}
 
 	return &Result{Allow: true}
-}
-
-func vcall(fi interface{}, cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
-	f := reflect.ValueOf(fi)
-	args := []reflect.Value{reflect.ValueOf(cc), reflect.ValueOf(acl), reflect.ValueOf(failmsg)}
-	r := f.Call(args)
-	if len(r) > 0 {
-		return r[0].Interface().(*Result)
-	}
-	log.Errorf("Error in container validation")
-	return &Result{Allow: false, Msg: "Unkown error"}
 }
