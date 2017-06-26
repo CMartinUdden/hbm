@@ -3,9 +3,7 @@ package plugin
 import (
 	"fmt"
 
-	"github.com/CMartinUdden/hbm/allow"
-	"github.com/CMartinUdden/hbm/endpoint"
-	"github.com/CMartinUdden/hbm/uri"
+	"github.com/CMartinUdden/hbm/policy"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/authorization"
 )
@@ -15,7 +13,7 @@ var SupportedVersion = "v1.24"
 
 // API structure
 type API struct {
-	Uris *uri.URIs
+	Uris *URIs
 }
 
 // Plugin structure
@@ -31,7 +29,7 @@ func NewPlugin() (*Plugin, error) {
 // AuthZReq function
 func (p *Plugin) AuthZReq(req authorization.Request) authorization.Response {
 
-	uriinfo, err := uri.GetURIInfo(SupportedVersion, req)
+	uriinfo, err := GetURIInfo(SupportedVersion, req)
 	if err != nil {
 		return authorization.Response{Err: err.Error()}
 	}
@@ -52,7 +50,7 @@ func (p *Plugin) AuthZReq(req authorization.Request) authorization.Response {
 	}
 
 	user := req.User
-	config := allow.Config{Username: user}
+	config := policy.Config{Username: user}
 
 	r := u.AllowFunc(req, &config)
 
@@ -78,21 +76,21 @@ func NewAPI(version string) (*API, error) {
 		return &API{}, fmt.Errorf("This version of HBM does not support Docker API version %s. Supported version is %s", version, SupportedVersion)
 	}
 
-	uris := endpoint.GetUris()
+	uris := GetUris()
 
 	return &API{Uris: uris}, nil
 }
 
 // Allow function
-func (a *API) Allow(req authorization.Request) *allow.Result {
+func (a *API) Allow(req authorization.Request) *policy.Result {
 
-	_, err := uri.GetURIInfo(SupportedVersion, req)
+	_, err := GetURIInfo(SupportedVersion, req)
 	if err != nil {
 		// Log event
 		log.Warning(err)
 
-		return &allow.Result{Allow: false, Error: err.Error()}
+		return &policy.Result{Allow: false, Error: err.Error()}
 	}
 
-	return &allow.Result{Allow: true}
+	return &policy.Result{Allow: true}
 }

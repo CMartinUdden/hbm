@@ -5,6 +5,7 @@ import (
 	"github.com/CMartinUdden/hbm/utils"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-connections/nat"
+	"github.com/docker/go-plugins-helpers/authorization"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,6 +19,24 @@ var (
 	// Directory the policy directory
 	Directory string
 )
+
+// Config appconfig structure
+type Config struct {
+	AppPath  string
+	Username string
+}
+
+// Result the result structure
+type Result struct {
+	Allow bool
+	Msg   string
+	Error string
+}
+
+// True always true
+func True(req authorization.Request, config *Config) *Result {
+	return &Result{Allow: true}
+}
 
 // SupportedFile check whether path is a supported configuration file
 func SupportedFile(path string) bool {
@@ -53,11 +72,7 @@ func Init() error {
 
 // GetACL gets a specific ACL
 func GetACL(user string) *ACL {
-	user, ok := getUser(user)
-
-	if !ok {
-		return &ACL{Name: user}
-	}
+	user = getUser(user)
 
 	if user == "*" {
 		if _, ok := acl[user]; !ok {
@@ -65,6 +80,13 @@ func GetACL(user string) *ACL {
 		}
 	}
 	return acl[user]
+}
+
+func getUser(u string) string {
+	if _, ok := acl[u]; !ok {
+		return "*"
+	}
+	return u
 }
 
 // ValidateDev policy
@@ -97,13 +119,6 @@ func ValidateHostPort(u *ACL, flag nat.PortBinding) bool {
 func ValidateBind(u *ACL, flag string) bool {
 	log.Debugf("ValidateBind called, %#v, %#v", u, flag)
 	return matchBind(flag, u.Binds)
-}
-
-func getUser(u string) (string, bool) {
-	if _, ok := acl[u]; !ok {
-		return "*", true
-	}
-	return u, true
 }
 
 func matchPortPolicy(pb nat.PortBinding, policy string) bool {
@@ -181,7 +196,7 @@ func matchBind(bindrequest string, policies []bind) bool {
 			log.Errorf(errmsg, "Policy path needs to be aboslute")
 			continue
 		}
-		restring := fmt.Sprintf(`^(%s|^%s/.*)$`, policy.Path, policy.Path)
+		restring := fmt.Sprintf(`^(%s|%s/.*)$`, policy.Path, policy.Path)
 		re, err := regexp.Compile(restring)
 		if err != nil {
 			log.Errorf(errmsg, err)

@@ -1,11 +1,11 @@
-package uri
+package plugin
 
 import (
 	"fmt"
 	"net/url"
 	"regexp"
 
-	"github.com/CMartinUdden/hbm/allow"
+	"github.com/CMartinUdden/hbm/policy"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/authorization"
 )
@@ -14,7 +14,7 @@ import (
 type URI struct {
 	Method      string
 	Re          *regexp.Regexp
-	AllowFunc   func(authorization.Request, *allow.Config) *allow.Result
+	AllowFunc   func(authorization.Request, *policy.Config) *policy.Result
 	Action      string
 	CmdName     string
 	Description string
@@ -30,12 +30,12 @@ type Info struct {
 }
 
 // New function
-func New() *URIs {
+func NewURI() *URIs {
 	return &URIs{}
 }
 
 // Register function
-func (uris *URIs) Register(method, uri string, af func(authorization.Request, *allow.Config) *allow.Result, action, cmdName, desc string) {
+func (uris *URIs) Register(method, uri string, af func(authorization.Request, *policy.Config) *policy.Result, action, cmdName, desc string) {
 	*uris = append(*uris, URI{Method: method, Re: regexp.MustCompile(uri), AllowFunc: af, Action: action, CmdName: cmdName, Description: desc})
 }
 

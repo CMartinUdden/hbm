@@ -1,11 +1,10 @@
-package allow
+package policy
 
 import (
 	"encoding/json"
 	"fmt"
 	"regexp"
 
-	"github.com/CMartinUdden/hbm/policy"
 	"github.com/CMartinUdden/hbm/utils"
 	//	log "github.com/Sirupsen/logrus"
 	"github.com/docker/engine-api/types/container"
@@ -24,7 +23,7 @@ type containerCreateConfig struct {
 
 // ContainerCreate called from plugin
 func ContainerCreate(req authorization.Request, config *Config) *Result {
-	acl := policy.GetACL(config.Username)
+	acl := GetACL(config.Username)
 
 	failmsg := "%s Using %s for user \"" + config.Username + "\" from ACL entry " + acl.String()
 
@@ -47,10 +46,10 @@ func ContainerCreate(req authorization.Request, config *Config) *Result {
 	return &Result{Allow: true}
 }
 
-func validateDevs(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+func validateDevs(cc *containerCreateConfig, acl *ACL, failmsg string) *Result {
 	if len(cc.HostConfig.Devices) > 0 {
 		for _, dev := range cc.HostConfig.Devices {
-			if !policy.ValidateDev(acl, dev.PathOnHost) {
+			if !ValidateDev(acl, dev.PathOnHost) {
 				msg := fmt.Sprintf(failmsg, dev.PathOnHost+" (--device=\""+dev.PathOnHost+"\" run parameter) is not allowed.", "devs")
 				return &Result{Allow: false, Msg: msg}
 			}
@@ -60,11 +59,11 @@ func validateDevs(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *R
 	return &Result{Allow: true}
 }
 
-func validateHostPorts(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+func validateHostPorts(cc *containerCreateConfig, acl *ACL, failmsg string) *Result {
 	if len(cc.HostConfig.PortBindings) > 0 {
 		for containerport, pbs := range cc.HostConfig.PortBindings {
 			for _, pb := range pbs {
-				if !policy.ValidateHostPort(acl, pb) {
+				if !ValidateHostPort(acl, pb) {
 					s := ""
 					if pb.HostIP != "" {
 						s = pb.HostIP + ":"
@@ -83,10 +82,10 @@ func validateHostPorts(cc *containerCreateConfig, acl *policy.ACL, failmsg strin
 	return &Result{Allow: true}
 }
 
-func validateBinds(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+func validateBinds(cc *containerCreateConfig, acl *ACL, failmsg string) *Result {
 	if len(cc.HostConfig.Binds) > 0 {
 		for _, b := range cc.HostConfig.Binds {
-			if !policy.ValidateBind(acl, b) {
+			if !ValidateBind(acl, b) {
 				msg := fmt.Sprintf(failmsg, "Host bind "+b+" (-v "+b+" run parameter) is not allowed.", "binds")
 				return &Result{Allow: false, Msg: msg}
 			}
@@ -96,10 +95,10 @@ func validateBinds(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *
 	return &Result{Allow: true}
 }
 
-func validateCaps(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+func validateCaps(cc *containerCreateConfig, acl *ACL, failmsg string) *Result {
 	if len(cc.HostConfig.CapAdd) > 0 {
 		for _, c := range cc.HostConfig.CapAdd {
-			if !policy.ValidateCap(acl, c) {
+			if !ValidateCap(acl, c) {
 				msg := fmt.Sprintf(failmsg, c+" (--cap-add=\""+c+"\" run parameter) is not allowed.", "caps")
 				return &Result{Allow: false, Msg: msg}
 			}
@@ -108,7 +107,7 @@ func validateCaps(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *R
 	return &Result{Allow: true}
 }
 
-func validateFlags(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *Result {
+func validateFlags(cc *containerCreateConfig, acl *ACL, failmsg string) *Result {
 	type flagt struct {
 		p    bool
 		name string
@@ -125,7 +124,7 @@ func validateFlags(cc *containerCreateConfig, acl *policy.ACL, failmsg string) *
 		flagt{p: cc.HostConfig.PublishAllPorts, name: "container_publish_all", fmsg: "(--publish-all run parameter) is not allowed"}}
 	for _, flag := range flags {
 		if flag.p {
-			if !policy.ValidateFlag(acl, flag.name) {
+			if !ValidateFlag(acl, flag.name) {
 				msg := fmt.Sprintf(failmsg, flag.name+" "+flag.fmsg, "flags")
 				return &Result{Allow: false, Msg: msg}
 			}

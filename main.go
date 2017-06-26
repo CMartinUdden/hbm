@@ -17,30 +17,14 @@
 package main
 
 import (
-	"github.com/CMartinUdden/hbm/server"
+	"github.com/CMartinUdden/hbm/cmd"
 	log "github.com/Sirupsen/logrus"
-	"github.com/spf13/cobra"
 )
 
-func newHbmCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "hbm",
-		Short: "HBM is an application to authorize and manage authorized docker commands",
-		Long:  "HBM is an application to authorize and manage authorized docker commands",
-	}
-
-	cmd.SetHelpTemplate(helpTemplate)
-	cmd.SetUsageTemplate(usageTemplate)
-
-	cmd.AddCommand(server.NewServerCommand())
-
-	return cmd
-}
-
 func main() {
-	cmd := newHbmCommand()
-	if err := cmd.Execute(); err != nil {
-		log.Error(err)
+	c := cmd.NewServerCommand()
+	if err := c.Execute(); err != nil {
+		log.Fatal(err)
 	}
 }
 

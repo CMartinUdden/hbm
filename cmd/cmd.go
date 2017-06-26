@@ -1,4 +1,4 @@
-package server
+package cmd
 
 import (
 	"io/ioutil"
@@ -17,6 +17,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var serverDescription = `
+Launch the HBM server
+
+`
+
 var (
 	serverConfig string
 )
@@ -24,7 +29,7 @@ var (
 // NewServerCommand new server command
 func NewServerCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "server",
+		Use:   "hbm",
 		Short: "Launch the HBM server",
 		Long:  serverDescription,
 		Run:   runStart,
@@ -41,13 +46,6 @@ func serverInitConfig() {
 	dockerPluginFile := filepath.Join(dockerPluginPath, "hbm.spec")
 	pluginSpecContent := []byte("unix://run/docker/plugins/hbm.sock")
 
-	_, err := exec.LookPath("docker")
-	if err != nil {
-		log.Fatal("Docker does not seem to be installed. Please check your installation.")
-
-		os.Exit(-1)
-	}
-
 	if err := os.MkdirAll(dockerPluginPath, 0755); err != nil {
 		log.Fatal(err)
 	}
@@ -58,6 +56,10 @@ func serverInitConfig() {
 		if err != nil {
 			log.Fatal(err)
 		}
+	}
+
+	if _, err = os.Stat(policy.Directory); err != nil {
+		log.Fatal(err)
 	}
 
 	log.Info("Server has completed initialization")
@@ -75,20 +77,6 @@ func runStart(cmd *cobra.Command, args []string) {
 	ch := make(chan os.Signal)
 	signal.Notify(ch, os.Interrupt)
 	signal.Notify(ch, syscall.SIGTERM)
-
-	go func() {
-		p, err := plugin.NewPlugin()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		h := authorization.NewHandler(p)
-
-		log.Info("HBM server")
-
-		log.Info("Listening on socket file")
-		log.Fatal(h.ServeUnix("hbm", 0))
-	}()
 
 	if _, err = os.Stat(policy.Directory); err == nil {
 		go func() {
@@ -114,11 +102,24 @@ func runStart(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go func() {
+		p, err := plugin.NewPlugin()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		h := authorization.NewHandler(p)
+
+		log.Info("HBM server")
+
+		log.Info("Listening on socket file")
+		log.Fatal(h.ServeUnix("hbm", 0))
+	}()
+
 	s := <-ch
 	log.Infof("Processing signal '%s'", s)
 }
-
-var serverDescription = `
-Launch the HBM server
-
-`
